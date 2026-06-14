@@ -1,6 +1,7 @@
 """
 Document Parser — Extracts text, tables, and metadata from PDF documents.
 Uses PyMuPDF for text, pdfplumber for tables, and PaddleOCR for scanned pages.
+Optionally uses LLM agent to extract Table of Contents page numbers.
 """
 import re
 import fitz  # PyMuPDF
@@ -11,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 from tqdm import tqdm
 
-from src.config import SECTION_PATTERNS
+from src.config import SECTION_PATTERNS, MANDATORY_SECTIONS
 
 
 @dataclass
@@ -58,7 +59,20 @@ def _init_paddle_ocr():
     """Lazily initialize PaddleOCR (heavy import)."""
     try:
         from paddleocr import PaddleOCR
-        return PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
+        # Try initializing with standard arguments
+        try:
+            return PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
+        except ValueError as e:
+            print(f"[WARN] Failed standard PaddleOCR init: {e}. Retrying with use_angle_cls and lang...")
+            try:
+                return PaddleOCR(use_angle_cls=True, lang='en')
+            except ValueError as e2:
+                print(f"[WARN] Failed with use_angle_cls: {e2}. Retrying with lang only...")
+                try:
+                    return PaddleOCR(lang='en')
+                except ValueError as e3:
+                    print(f"[WARN] Failed with lang: {e3}. Retrying with no arguments...")
+                    return PaddleOCR()
     except ImportError:
         print("[WARN] PaddleOCR not installed. OCR fallback disabled.")
         print("       Install with: pip install paddlepaddle paddleocr")
@@ -154,10 +168,27 @@ def ocr_page(page: fitz.Page) -> str:
         if pix.n == 4:
             img = img[:, :, :3]
 
-        result = engine.ocr(img, cls=True)
+        try:
+            result = engine.ocr(img, cls=True)
+        except TypeError:
+            try:
+                result = engine.ocr(img)
+            except Exception as e:
+                # Some newer versions might take different arguments or have a predict method
+                # Let's try calling it directly if standard ocr fails
+                result = engine(img)
+
         if result and result[0]:
-            lines = [line[1][0] for line in result[0] if line[1]]
-            return "\n".join(lines)
+            # Some versions return list of results, some return dict or custom objects
+            try:
+                lines = [line[1][0] for line in result[0] if line[1]]
+                return "\n".join(lines)
+            except Exception:
+                # Fallback for alternative return formats (e.g. lists of strings or dicts)
+                if isinstance(result, list):
+                    if all(isinstance(x, str) for x in result):
+                        return "\n".join(result)
+                return str(result)
     except Exception as e:
         print(f"  [WARN] OCR failed: {e}")
 
@@ -214,6 +245,109 @@ def detect_sections(pages: list) -> list:
     return sections
 
 
+def extract_sections_with_llm(pages: list, llm_client, verbose: bool = True) -> list:
+    """
+    Extract document sections by calling LLM on the Table of Contents pages.
+    """
+    if verbose:
+        print("  🧠 Analyzing Table of Contents using LLM Agent...")
+
+    # Identify TOC pages (usually in first 12 pages)
+    toc_text_parts = []
+    toc_page_nums = []
+    for p in pages[:12]:
+        text_lower = p.text.lower()
+        if "table of contents" in text_lower or "index" in text_lower or "contents" in text_lower or "particulars" in text_lower:
+            toc_text_parts.append(p.text)
+            toc_page_nums.append(p.page_num)
+
+    # Fallback to pages 3-7 if no explicit keyword matches
+    if not toc_text_parts:
+        toc_text_parts = [p.text for p in pages[2:7] if p.text]
+        toc_page_nums = [p.page_num for p in pages[2:7] if p.text]
+
+    # Combine text with page indicators
+    toc_text = ""
+    for num, txt in zip(toc_page_nums, toc_text_parts):
+        toc_text += f"\n\n--- Page {num} ---\n\n{txt}"
+
+    if not toc_text.strip():
+        return []
+
+    TOC_EXTRACTION_SYSTEM = "You are a SEBI compliance expert specializing in IPO document analysis."
+    
+    prompt = f"""Analyze the following Table of Contents (TOC) pages of a Draft Red Herring Prospectus (DRHP). 
+Identify the starting page number for each section.
+
+Standard sections to look for:
+{", ".join(MANDATORY_SECTIONS)}
+
+Return a JSON object containing a list of sections, structured exactly like this:
+{{
+    "sections": [
+        {{
+            "name": "section_name_from_list",
+            "title": "Exact Title as shown in TOC",
+            "start_page": 45
+        }}
+    ]
+}}
+
+Rules:
+1. ONLY include sections that are actually listed in the TOC text.
+2. The start_page MUST be an integer representing the page number shown in the TOC.
+3. Use the exact names from the list above for the "name" field.
+
+TOC TEXT:
+{toc_text}
+"""
+    
+    try:
+        response = llm_client.call_json(system=TOC_EXTRACTION_SYSTEM, user=prompt)
+        extracted = response.get("sections", [])
+        
+        sections = []
+        for item in extracted:
+            name = item.get("name")
+            title = item.get("title")
+            start_page = item.get("start_page")
+            
+            # Verify and clean the data
+            if name and name in MANDATORY_SECTIONS and title and isinstance(start_page, int):
+                sections.append(DetectedSection(
+                    name=name,
+                    title=title,
+                    start_page=start_page
+                ))
+                
+        if not sections:
+            return []
+
+        # Sort sections by start page
+        sections.sort(key=lambda s: s.start_page)
+        
+        # Calculate end pages
+        for i in range(len(sections)):
+            if i + 1 < len(sections):
+                sections[i].end_page = sections[i + 1].start_page - 1
+            else:
+                sections[i].end_page = pages[-1].page_num if pages else None
+                
+        # Extract section text
+        for section in sections:
+            section_text_parts = []
+            for page in pages:
+                if section.start_page <= page.page_num <= (section.end_page or page.page_num):
+                    section_text_parts.append(page.text)
+            section.text = "\n\n".join(section_text_parts)
+            
+        return sections
+    except Exception as e:
+        if verbose:
+            print(f"  [WARN] LLM TOC extraction failed: {e}")
+        return []
+
+
 def extract_cover_metadata(pages: list) -> dict:
     """
     Extract metadata from the cover page (first 3 pages).
@@ -267,13 +401,14 @@ def extract_cover_metadata(pages: list) -> dict:
     return metadata
 
 
-def parse_document(pdf_path: str, verbose: bool = True) -> ParsedDocument:
+def parse_document(pdf_path: str, verbose: bool = True, llm_client=None) -> ParsedDocument:
     """
     Parse a complete PDF document.
 
     Args:
         pdf_path: Path to the PDF file
         verbose: Whether to show progress
+        llm_client: Optional LLMClient to extract Table of Contents page boundaries
 
     Returns:
         ParsedDocument with all extracted content
@@ -321,8 +456,17 @@ def parse_document(pdf_path: str, verbose: bool = True) -> ParsedDocument:
 
     doc.close()
 
-    # Detect sections
-    sections = detect_sections(pages)
+    # Detect sections (use LLM TOC extraction if llm_client is provided, else fallback to regex)
+    sections = []
+    if llm_client:
+        try:
+            sections = extract_sections_with_llm(pages, llm_client, verbose=verbose)
+        except Exception as e:
+            if verbose:
+                print(f"  [WARN] LLM TOC extraction failed: {e}. Falling back to regex...")
+    
+    if not sections:
+        sections = detect_sections(pages)
 
     # Extract metadata from cover
     metadata = extract_cover_metadata(pages)

@@ -141,7 +141,7 @@ class AuditAgent:
         try:
             # Step 1: Parse Document
             self._log_step(state, "parse_document", "Parsing PDF document")
-            state.parsed_doc = parse_document(document_path, verbose=True)
+            state.parsed_doc = parse_document(document_path, verbose=True, llm_client=self.llm)
             self._complete_step(state, f"Parsed {state.parsed_doc.total_pages} pages, "
                                f"{state.parsed_doc.tables_count} tables, "
                                f"{state.parsed_doc.ocr_pages_count} OCR pages")

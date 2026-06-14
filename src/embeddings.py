@@ -21,7 +21,12 @@ class EmbeddingManager:
 
         print(f"  Loading embedding model: {self.model_name} on {self.device}...")
         self.embed_model = SentenceTransformer(self.model_name, device=self.device)
-        print(f"  ✅ Embedding model loaded (dim={self.embed_model.get_sentence_embedding_dimension()})")
+        dim = EMBEDDING_DIM
+        if hasattr(self.embed_model, "get_embedding_dimension"):
+            dim = self.embed_model.get_embedding_dimension()
+        elif hasattr(self.embed_model, "get_sentence_embedding_dimension"):
+            dim = self.embed_model.get_sentence_embedding_dimension()
+        print(f"  ✅ Embedding model loaded (dim={dim})")
 
         os.makedirs(self.chroma_path, exist_ok=True)
         self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
