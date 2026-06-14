@@ -1,0 +1,28 @@
+# LLM & Embeddings
+openai
+sentence-transformers
+chromadb
+
+# Agent Framework
+langgraph
+langchain-core
+langchain-openai
+
+# PDF Processing
+PyMuPDF
+pdfplumber
+paddlepaddle
+paddleocr
+Pillow
+numpy
+
+# UI (for later)
+streamlit
+
+# Report Generation
+fpdf2
+
+# Utilities
+pandas
+scikit-learn
+tqdm
