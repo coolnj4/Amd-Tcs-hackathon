@@ -155,6 +155,10 @@ def ocr_page(page: fitz.Page) -> str:
     Returns:
         Extracted text string
     """
+    from src.config import USE_OCR
+    if not USE_OCR:
+        return ""
+
     engine = get_ocr_engine()
     if engine is None:
         return ""
@@ -168,26 +172,24 @@ def ocr_page(page: fitz.Page) -> str:
         if pix.n == 4:
             img = img[:, :, :3]
 
+        result = None
         try:
             result = engine.ocr(img, cls=True)
-        except TypeError:
+        except (TypeError, Exception):
             try:
                 result = engine.ocr(img)
-            except Exception as e:
-                # Some newer versions might take different arguments or have a predict method
-                # Let's try calling it directly if standard ocr fails
-                result = engine(img)
+            except Exception as e2:
+                print(f"  [WARN] OCR failed: {e2}")
+                return ""
 
         if result and result[0]:
-            # Some versions return list of results, some return dict or custom objects
             try:
                 lines = [line[1][0] for line in result[0] if line[1]]
                 return "\n".join(lines)
-            except Exception:
-                # Fallback for alternative return formats (e.g. lists of strings or dicts)
-                if isinstance(result, list):
-                    if all(isinstance(x, str) for x in result):
-                        return "\n".join(result)
+            except (IndexError, TypeError):
+                # Fallback for alternative return formats
+                if isinstance(result, list) and all(isinstance(x, str) for x in result):
+                    return "\n".join(result)
                 return str(result)
     except Exception as e:
         print(f"  [WARN] OCR failed: {e}")

@@ -43,6 +43,10 @@ EMBEDDING_MODEL_NAME = "BAAI/bge-large-en-v1.5"
 EMBEDDING_DEVICE = "cuda"  # Use "cpu" if GPU not available for embeddings
 EMBEDDING_DIM = 1024  # bge-large-en-v1.5 output dimension
 
+# OCR toggle — disable if PDFs are selectable text (no scanned images)
+# PaddleOCR has compatibility issues on some environments (ROCm, etc.)
+USE_OCR = os.environ.get("USE_OCR", "false").lower() == "true"
+
 # ============================================================
 # LLM PARAMETERS
 # ============================================================

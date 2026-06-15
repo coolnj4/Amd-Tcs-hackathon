@@ -128,14 +128,20 @@ def generate_pdf_report(report: dict, output_path: str) -> str:
         explanation = finding.get('explanation', '')
         if explanation:
             pdf.set_font('Helvetica', 'I', 9)
-            pdf.multi_cell(0, 5, _safe(f"   Explanation: {explanation[:300]}"))
+            try:
+                pdf.multi_cell(0, 5, _safe(f" {explanation[:300]}"))
+            except Exception:
+                pdf.cell(0, 5, _safe(explanation[:80]), new_x="LMARGIN", new_y="NEXT")
 
         # Evidence
         evidence = finding.get('evidence', {})
         excerpt = evidence.get('document_excerpt', '')
         if excerpt and status != "COMPLIANT":
-            pdf.set_font('Courier', '', 8)
-            pdf.multi_cell(0, 4, _safe(f"   Evidence: {excerpt[:250]}"))
+            pdf.set_font('Helvetica', '', 8)
+            try:
+                pdf.multi_cell(0, 4, _safe(f" Evidence: {excerpt[:200]}"))
+            except Exception:
+                pdf.cell(0, 4, _safe(f" Evidence: {excerpt[:70]}"), new_x="LMARGIN", new_y="NEXT")
 
         pdf.ln(3)
 
@@ -153,7 +159,10 @@ def generate_pdf_report(report: dict, output_path: str) -> str:
                      new_x="LMARGIN", new_y="NEXT")
             reason = d.get('discard_reason', 'No reason provided')
             pdf.set_font('Helvetica', 'I', 8)
-            pdf.multi_cell(0, 4, _safe(f"  Reason: {reason[:200]}"))
+            try:
+                pdf.multi_cell(0, 4, _safe(f" {reason[:200]}"))
+            except Exception:
+                pdf.cell(0, 4, _safe(reason[:80]), new_x="LMARGIN", new_y="NEXT")
             pdf.set_font('Helvetica', '', 9)
             pdf.ln(2)
 
@@ -165,7 +174,15 @@ def generate_pdf_report(report: dict, output_path: str) -> str:
 
 
 def _safe(text: str) -> str:
-    """Make text safe for FPDF (handle encoding issues)."""
+    """Make text safe for FPDF (handle encoding, control chars, long strings)."""
+    import re
+    # Remove control characters except newline/tab
+    text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+    # Replace tabs with spaces
+    text = text.replace('\t', '  ')
+    # Break very long unbreakable words (>60 chars) by inserting spaces
+    text = re.sub(r'(\S{60})', r'\1 ', text)
+    # Encode to latin-1 safely
     return text.encode('latin-1', errors='replace').decode('latin-1')
 
 

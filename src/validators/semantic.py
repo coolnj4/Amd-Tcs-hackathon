@@ -90,6 +90,17 @@ class SemanticValidator:
         doc_query = " ".join(rule.get("search_keywords", [rule.get("title", "")]))
         applicable_sections = rule.get("applicable_sections", [])
 
+        # Special handling: cover_page is never indexed as a section in ChromaDB
+        # because it's just the first few pages. Inject those pages directly.
+        cover_page_text = ""
+        if "cover_page" in applicable_sections:
+            cover_pages = parsed_doc.pages[:5] if hasattr(parsed_doc, 'pages') else []
+            cover_page_text = "\n\n".join(
+                f"[Page {p.page_num}]\n{p.text}" for p in cover_pages if p.text.strip()
+            )
+            # Remove cover_page from sections to query (won't exist in ChromaDB)
+            applicable_sections = [s for s in applicable_sections if s != "cover_page"]
+
         # Try section-filtered retrieval first
         doc_results = []
         if applicable_sections:
@@ -97,20 +108,24 @@ class SemanticValidator:
                 section_results = self.embeddings.query(
                     document_collection,
                     query_text=doc_query,
-                    top_k=2,
+                    top_k=3,
                     where={"section": section},
                 )
                 doc_results.extend(section_results)
 
-        # If no filtered results, do unfiltered retrieval
+        # If no filtered results, do unfiltered retrieval with higher top_k
         if not doc_results:
             doc_results = self.embeddings.query(
                 document_collection,
                 query_text=doc_query,
-                top_k=5,
+                top_k=8,
             )
 
         document_text = "\n\n".join([r["text"][:1500] for r in doc_results[:5]])
+
+        # Prepend cover page text if this rule checks the cover page
+        if cover_page_text:
+            document_text = f"=== COVER PAGE (First 5 Pages) ===\n{cover_page_text[:4000]}\n\n=== RELEVANT SECTIONS ===\n{document_text}"
 
         if not document_text.strip():
             return self._make_finding(
