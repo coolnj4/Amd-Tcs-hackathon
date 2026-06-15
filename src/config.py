@@ -146,6 +146,8 @@ def ensure_dirs():
     """Create necessary directories if they don't exist."""
     os.makedirs(SHARED_DIR, exist_ok=True)
     os.makedirs(CHROMA_DB_PATH, exist_ok=True)
+    os.makedirs(IPO_DIR, exist_ok=True)
+    os.makedirs(COMPLIANCE_DIR, exist_ok=True)
     os.makedirs(os.path.join(BASE_DIR, "reports"), exist_ok=True)
 
 

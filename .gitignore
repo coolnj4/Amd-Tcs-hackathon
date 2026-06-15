@@ -1,6 +1,7 @@
 # Large data files (too big for GitHub)
 shared/
 reports/
+Amd-Tcs-hackathon/
 
 # Python
 __pycache__/
