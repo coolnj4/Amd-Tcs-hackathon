@@ -62,17 +62,21 @@ def _init_paddle_ocr():
         # Try initializing with standard arguments
         try:
             return PaddleOCR(use_angle_cls=True, lang='en', use_gpu=False, show_log=False)
-        except ValueError as e:
+        except Exception as e:
             print(f"[WARN] Failed standard PaddleOCR init: {e}. Retrying with use_angle_cls and lang...")
             try:
                 return PaddleOCR(use_angle_cls=True, lang='en')
-            except ValueError as e2:
+            except Exception as e2:
                 print(f"[WARN] Failed with use_angle_cls: {e2}. Retrying with lang only...")
                 try:
                     return PaddleOCR(lang='en')
-                except ValueError as e3:
+                except Exception as e3:
                     print(f"[WARN] Failed with lang: {e3}. Retrying with no arguments...")
-                    return PaddleOCR()
+                    try:
+                        return PaddleOCR()
+                    except Exception as e4:
+                        print(f"[WARN] All PaddleOCR init attempts failed: {e4}")
+                        return None
     except ImportError:
         print("[WARN] PaddleOCR not installed. OCR fallback disabled.")
         print("       Install with: pip install paddlepaddle paddleocr")
