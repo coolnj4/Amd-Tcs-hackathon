@@ -201,9 +201,31 @@ def ocr_page(page: fitz.Page) -> str:
     return ""
 
 
+def _is_toc_noise(heading_text: str) -> bool:
+    """Check if a heading is actually ToC noise (page references, dotted leaders)."""
+    # Dotted leaders from ToC lines like "RISK FACTORS ...... 25"
+    if re.search(r'\.{3,}', heading_text):
+        return True
+    # Heading is just a number or whitespace
+    if re.match(r'^\s*\d+\s*$', heading_text):
+        return True
+    # Very short headings (< 5 real chars) are likely noise
+    alpha_chars = re.sub(r'[^a-zA-Z]', '', heading_text)
+    if len(alpha_chars) < 5:
+        return True
+    return False
+
+
+# Sections that genuinely appear in the first few pages
+_EARLY_PAGE_SECTIONS = {
+    "table_of_contents", "definitions", "summary", "general_info",
+}
+
+
 def detect_sections(pages: list) -> list:
     """
     Detect document sections by matching heading patterns.
+    Filters out false matches on Table of Contents pages.
 
     Args:
         pages: List of PageContent objects
@@ -212,16 +234,24 @@ def detect_sections(pages: list) -> list:
         List of DetectedSection objects, sorted by start_page
     """
     sections = []
-    full_text_by_page = {p.page_num: p.text for p in pages}
 
     for section_key, pattern in SECTION_PATTERNS.items():
         for page in pages:
+            # Skip early pages (ToC region) for most sections —
+            # the ToC mentions every section name so regex matches everything.
+            if page.page_num <= 8 and section_key not in _EARLY_PAGE_SECTIONS:
+                continue
+
             match = re.search(pattern, page.text)
             if match:
                 # Extract the actual heading text (first 100 chars of match context)
                 start = max(0, match.start() - 10)
                 heading_text = page.text[start:match.end() + 50].strip()
                 heading_text = heading_text.split("\n")[0].strip()  # First line only
+
+                # Filter out ToC noise (dotted leaders, bare numbers)
+                if _is_toc_noise(heading_text):
+                    continue
 
                 sections.append(DetectedSection(
                     name=section_key,
@@ -232,6 +262,16 @@ def detect_sections(pages: list) -> list:
 
     # Sort by start page
     sections.sort(key=lambda s: s.start_page)
+
+    # Remove duplicate sections on the same page (likely ToC remnants)
+    if sections:
+        filtered = [sections[0]]
+        for s in sections[1:]:
+            # If two sections start on the exact same page, keep only the first
+            if s.start_page == filtered[-1].start_page:
+                continue
+            filtered.append(s)
+        sections = filtered
 
     # Set end pages (each section ends where the next begins)
     for i in range(len(sections)):

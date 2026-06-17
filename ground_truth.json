@@ -1,0 +1,229 @@
+{
+  "_description": "Ground truth labels for a subset of compliance rules across 2 test documents. Used for computing Precision/Recall/F1 metrics.",
+  "_methodology": "Deterministic rules are verified by pattern matching (100% reliable). Semantic rules are manually verified from document content and audit output.",
+  "_date": "2026-06-17",
+  "documents": {
+    "Deon_Energy": {
+      "document_file": "Deon_Energy_Limited_DRHP.pdf",
+      "company_name": "DEON ENERGY LIMITED",
+      "labels": {
+        "SEBI_ICDR_001": {
+          "rule_title": "Cover Page: Company Name",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Company name 'DEON ENERGY LIMITED' is clearly printed on cover page"
+        },
+        "SEBI_ICDR_002": {
+          "rule_title": "Cover Page: CIN Number",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "CIN number present on cover page"
+        },
+        "SEBI_ICDR_003": {
+          "rule_title": "Cover Page: DRHP Label",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Document clearly labeled as 'DRAFT RED HERRING PROSPECTUS'"
+        },
+        "SEBI_ICDR_004": {
+          "rule_title": "Cover Page: ISIN Number",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "ISIN number present on cover page"
+        },
+        "SEBI_ICDR_005": {
+          "rule_title": "Cover Page: Registered Office Address",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Registered office address present on cover page"
+        },
+        "SEBI_ICDR_010": {
+          "rule_title": "Risk Factors Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Risk Factors section present starting at page 25"
+        },
+        "SEBI_ICDR_011": {
+          "rule_title": "Risk Factors: Internal Risk Factors",
+          "check_type": "SEMANTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Document contains detailed internal risk factors section"
+        },
+        "SEBI_ICDR_012": {
+          "rule_title": "Risk Factors: External Risk Factors",
+          "check_type": "SEMANTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "External/industry risks discussed in risk factors section"
+        },
+        "SEBI_ICDR_020": {
+          "rule_title": "Capital Structure Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Capital Structure section present starting at page 88"
+        },
+        "SEBI_ICDR_021": {
+          "rule_title": "Capital Structure: Authorized Capital Details",
+          "check_type": "SEMANTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Authorized, issued, subscribed capital breakdown provided"
+        },
+        "SEBI_ICDR_030": {
+          "rule_title": "Objects of the Issue Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Objects of the Issue section present"
+        },
+        "SEBI_ICDR_031": {
+          "rule_title": "Objects: Detailed Fund Utilization",
+          "check_type": "SEMANTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Detailed breakdown of fund utilization provided with amounts"
+        },
+        "SEBI_ICDR_040": {
+          "rule_title": "Basis for Issue Price Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Basis for Issue Price section present"
+        },
+        "SEBI_ICDR_050": {
+          "rule_title": "Financial Information Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Financial Information section with restated statements present"
+        },
+        "SEBI_ICDR_060": {
+          "rule_title": "Legal and Other Information Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Legal section present with litigation details"
+        },
+        "SEBI_ICDR_070": {
+          "rule_title": "Management Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Our Management section present with director details"
+        },
+        "SEBI_ICDR_071": {
+          "rule_title": "Management: Director Details",
+          "check_type": "SEMANTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Director names, qualifications, and experience listed"
+        },
+        "SEBI_ICDR_080": {
+          "rule_title": "Promoters Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Our Promoters section present with promoter details"
+        },
+        "SEBI_ICDR_090": {
+          "rule_title": "Dividend Policy Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Dividend Policy section present"
+        },
+        "SEBI_ICDR_100": {
+          "rule_title": "Industry Overview Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Industry Overview section present with market data"
+        }
+      }
+    },
+    "Virupaksha_Organics": {
+      "document_file": "Virupaksha_Organics_Limited_DRHP.pdf",
+      "company_name": "VIRUPAKSHA ORGANICS LIMITED",
+      "labels": {
+        "SEBI_ICDR_001": {
+          "rule_title": "Cover Page: Company Name",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Company name clearly on cover page"
+        },
+        "SEBI_ICDR_002": {
+          "rule_title": "Cover Page: CIN Number",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "CIN present on cover"
+        },
+        "SEBI_ICDR_003": {
+          "rule_title": "Cover Page: DRHP Label",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Labeled as DRHP on cover page"
+        },
+        "SEBI_ICDR_004": {
+          "rule_title": "Cover Page: ISIN Number",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "ISIN present on cover"
+        },
+        "SEBI_ICDR_010": {
+          "rule_title": "Risk Factors Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Risk Factors section present"
+        },
+        "SEBI_ICDR_011": {
+          "rule_title": "Risk Factors: Internal Risk Factors",
+          "check_type": "SEMANTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Internal risks detailed"
+        },
+        "SEBI_ICDR_020": {
+          "rule_title": "Capital Structure Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Capital Structure section present"
+        },
+        "SEBI_ICDR_030": {
+          "rule_title": "Objects of the Issue Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Objects section present"
+        },
+        "SEBI_ICDR_040": {
+          "rule_title": "Basis for Issue Price Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Basis for Issue Price present"
+        },
+        "SEBI_ICDR_050": {
+          "rule_title": "Financial Information Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Financial section present"
+        },
+        "SEBI_ICDR_060": {
+          "rule_title": "Legal and Other Information Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Legal section present"
+        },
+        "SEBI_ICDR_070": {
+          "rule_title": "Management Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Management section present"
+        },
+        "SEBI_ICDR_080": {
+          "rule_title": "Promoters Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Promoters section present"
+        },
+        "SEBI_ICDR_090": {
+          "rule_title": "Dividend Policy Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Dividend policy present"
+        },
+        "SEBI_ICDR_100": {
+          "rule_title": "Industry Overview Section Exists",
+          "check_type": "DETERMINISTIC",
+          "expected_status": "COMPLIANT",
+          "reasoning": "Industry overview present"
+        }
+      }
+    }
+  }
+}

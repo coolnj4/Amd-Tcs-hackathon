@@ -7,7 +7,11 @@ import json
 
 CRITIC_SYSTEM = """You are a SENIOR SEBI compliance auditor reviewing a junior auditor's findings.
 Your job is to verify findings are accurate and not false positives.
-Be critical but fair. Only reject findings with clear reasoning."""
+Be critical but fair. Only reject findings with clear reasoning.
+
+IMPORTANT: If a finding is marked NEEDS_REVIEW but you can see evidence in the document 
+that addresses the regulation, upgrade your verdict to VALID (if compliant) or keep it as 
+VALID with a note (if non-compliant). The goal is to REDUCE ambiguity, not preserve it."""
 
 CRITIC_PROMPT = """A junior auditor flagged this compliance finding during a DRHP review.
 Your job is to verify whether it's correct or a false positive.
@@ -38,10 +42,16 @@ Critically evaluate:
 3. Is there ambiguity in the regulation that makes this judgment uncertain?
 4. For DETERMINISTIC checks: is the pattern matching correct?
 5. For SEMANTIC checks: is the LLM interpretation reasonable?
+6. If the status is NEEDS_REVIEW: can you make a definitive COMPLIANT/NON_COMPLIANT judgment from the broader context?
+
+IMPORTANT: If the junior auditor marked this as NEEDS_REVIEW but the broader document 
+context shows relevant content, you should return VALID and note that the document does 
+address this regulation. Reduce ambiguity wherever possible.
 
 Respond ONLY in JSON:
 {{
     "verdict": "VALID or FALSE_POSITIVE or NEEDS_MORE_EVIDENCE",
+    "revised_status": "COMPLIANT or NON_COMPLIANT or NEEDS_REVIEW",
     "revised_confidence": 0.0 to 1.0,
     "reasoning": "2-3 sentences explaining your review decision",
     "missed_evidence": "Any evidence the junior auditor missed (or empty string)",
@@ -96,6 +106,14 @@ class CriticAgent:
                     finding["critic_confidence"] = review_result["revised_confidence"]
                     finding["critic_reasoning"] = review_result["reasoning"]
                     finding["critic_reviewed"] = True
+
+                    # Allow critic to upgrade NEEDS_REVIEW → COMPLIANT/NON_COMPLIANT
+                    revised_status = review_result.get("revised_status", "")
+                    if revised_status in ("COMPLIANT", "NON_COMPLIANT") and finding.get("status") == "NEEDS_REVIEW":
+                        finding["status"] = revised_status
+                        finding["confidence"] = max(finding.get("confidence", 0.5),
+                                                    review_result["revised_confidence"])
+
                     verified.append(finding)
                     self.stats["valid"] += 1
                     print(f"    ✅ [{finding['rule_id']}] Verified — {review_result['reasoning'][:60]}...")
@@ -113,7 +131,14 @@ class CriticAgent:
                     # Downgrade confidence rather than retry (saves time)
                     finding["confidence"] = min(finding.get("confidence", 0.5), 0.5)
                     finding["critic_confidence"] = review_result["revised_confidence"]
-                    finding["status"] = "NEEDS_REVIEW"
+
+                    # Allow critic to override status even on NEEDS_MORE_EVIDENCE
+                    revised_status = review_result.get("revised_status", "")
+                    if revised_status in ("COMPLIANT", "NON_COMPLIANT"):
+                        finding["status"] = revised_status
+                    else:
+                        finding["status"] = "NEEDS_REVIEW"
+
                     verified.append(finding)
                     self.stats["needs_more"] += 1
                     print(f"    ⚠️  [{finding['rule_id']}] Needs Review — {review_result['reasoning'][:60]}...")
@@ -166,6 +191,7 @@ class CriticAgent:
 
         return {
             "verdict": verdict,
+            "revised_status": response.get("revised_status", ""),
             "revised_confidence": response.get("revised_confidence", finding.get("confidence", 0.5)),
             "reasoning": response.get("reasoning", "No reasoning provided"),
             "missed_evidence": response.get("missed_evidence", ""),

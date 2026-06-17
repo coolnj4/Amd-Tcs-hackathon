@@ -1,15 +1,27 @@
 """
 Semantic Validator — Uses LLM to assess compliance through natural language understanding.
 The LLM receives the regulation text and document excerpt, then makes a judgment.
+
+Includes retry logic: if first RAG retrieval is weak, retries with broader query
+and falls back to direct section text scan.
 """
 import json
+import re
 
 
 SEMANTIC_SYSTEM = """You are a SEBI compliance auditor. Your task is to determine whether a 
 Draft Red Herring Prospectus (DRHP) complies with a specific SEBI regulation.
 
 Be precise and evidence-based. Always cite specific text from the document as evidence.
-If you cannot determine compliance from the available text, say so clearly."""
+
+IMPORTANT GUIDELINES:
+- If you find ANY relevant content addressing the regulation, make a definitive judgment 
+  (COMPLIANT or NON_COMPLIANT). Do NOT default to NEEDS_REVIEW.
+- Use NEEDS_REVIEW ONLY when the document sections provided contain absolutely NO text 
+  related to the regulation topic. This should be rare for a 400+ page DRHP.
+- Partial disclosure is still disclosure — lean toward COMPLIANT with a note if the 
+  document addresses the topic even if not perfectly.
+- For section-presence checks: if the section exists with relevant content, it is COMPLIANT."""
 
 SEMANTIC_PROMPT = """COMPLIANCE CHECK:
 
@@ -34,6 +46,16 @@ RELEVANT DOCUMENT SECTIONS (from the DRHP being audited):
 ---
 
 Analyze whether the document complies with this regulation. 
+
+CRITICAL RULES FOR YOUR ASSESSMENT:
+1. If the document text contains information relevant to this regulation, you MUST choose 
+   COMPLIANT or NON_COMPLIANT — do NOT use NEEDS_REVIEW.
+2. NEEDS_REVIEW is ONLY for cases where the retrieved text is completely irrelevant to the 
+   regulation (wrong section retrieved).
+3. For "section must exist" type checks: if the text above contains content from that 
+   section, the document IS compliant.
+4. Be specific about which page numbers or sections contain the evidence.
+
 Respond ONLY in JSON:
 {{
     "compliant": true or false or null,
@@ -43,13 +65,11 @@ Respond ONLY in JSON:
     "explanation": "Detailed reasoning for your assessment (2-3 sentences)",
     "page_references": "Which pages or sections the evidence was found in",
     "status": "COMPLIANT or NON_COMPLIANT or NEEDS_REVIEW"
-}}
-
-Use "null" for compliant and NEEDS_REVIEW for status if you genuinely cannot determine compliance from the available text."""
+}}"""
 
 
 class SemanticValidator:
-    """Runs LLM-powered semantic compliance checks."""
+    """Runs LLM-powered semantic compliance checks with retrieval retry."""
 
     def __init__(self, llm_client, embedding_manager):
         """
@@ -64,6 +84,7 @@ class SemanticValidator:
                  document_collection) -> dict:
         """
         Run a semantic compliance check using RAG + LLM.
+        Includes retry logic for weak retrievals.
 
         Args:
             rule: Compliance rule dict
@@ -86,46 +107,10 @@ class SemanticValidator:
         )
         regulation_text = "\n\n".join([r["text"][:1500] for r in reg_results])
 
-        # Step 2: Retrieve relevant document sections from document RAG
-        doc_query = " ".join(rule.get("search_keywords", [rule.get("title", "")]))
-        applicable_sections = rule.get("applicable_sections", [])
-
-        # Special handling: cover_page is never indexed as a section in ChromaDB
-        # because it's just the first few pages. Inject those pages directly.
-        cover_page_text = ""
-        if "cover_page" in applicable_sections:
-            cover_pages = parsed_doc.pages[:5] if hasattr(parsed_doc, 'pages') else []
-            cover_page_text = "\n\n".join(
-                f"[Page {p.page_num}]\n{p.text}" for p in cover_pages if p.text.strip()
-            )
-            # Remove cover_page from sections to query (won't exist in ChromaDB)
-            applicable_sections = [s for s in applicable_sections if s != "cover_page"]
-
-        # Try section-filtered retrieval first
-        doc_results = []
-        if applicable_sections:
-            for section in applicable_sections:
-                section_results = self.embeddings.query(
-                    document_collection,
-                    query_text=doc_query,
-                    top_k=3,
-                    where={"section": section},
-                )
-                doc_results.extend(section_results)
-
-        # If no filtered results, do unfiltered retrieval with higher top_k
-        if not doc_results:
-            doc_results = self.embeddings.query(
-                document_collection,
-                query_text=doc_query,
-                top_k=8,
-            )
-
-        document_text = "\n\n".join([r["text"][:1500] for r in doc_results[:5]])
-
-        # Prepend cover page text if this rule checks the cover page
-        if cover_page_text:
-            document_text = f"=== COVER PAGE (First 5 Pages) ===\n{cover_page_text[:4000]}\n\n=== RELEVANT SECTIONS ===\n{document_text}"
+        # Step 2: Retrieve relevant document sections (with retry logic)
+        document_text, avg_retrieval_score = self._retrieve_with_retry(
+            rule, parsed_doc, document_collection
+        )
 
         if not document_text.strip():
             return self._make_finding(
@@ -141,10 +126,6 @@ class SemanticValidator:
             )
 
         # Step 3: Call LLM for semantic assessment
-        avg_retrieval_score = 1.0 - (
-            sum(r.get("distance", 0.5) for r in doc_results[:5]) / max(len(doc_results[:5]), 1)
-        )
-
         try:
             response = self.llm.call_json(
                 system=SEMANTIC_SYSTEM,
@@ -155,7 +136,7 @@ class SemanticValidator:
                     what_to_look_for=rule.get("what_to_look_for", "General compliance"),
                     validation_question=validation_question,
                     regulation_text=regulation_text[:3000],
-                    document_text=document_text[:4000],
+                    document_text=document_text[:5000],
                 ),
             )
 
@@ -192,6 +173,93 @@ class SemanticValidator:
                 page_references="",
                 retrieval_score=avg_retrieval_score,
             )
+
+    def _retrieve_with_retry(self, rule, parsed_doc, document_collection):
+        """
+        Multi-strategy retrieval with fallback:
+        1. Section-filtered RAG query using search_keywords
+        2. Broader unfiltered RAG query using title + description
+        3. Direct section text scan from parsed_doc.sections
+
+        Returns:
+            (document_text: str, avg_retrieval_score: float)
+        """
+        doc_query = " ".join(rule.get("search_keywords", [rule.get("title", "")]))
+        applicable_sections = rule.get("applicable_sections", [])
+
+        # Handle cover_page injection
+        cover_page_text = ""
+        if "cover_page" in applicable_sections:
+            cover_pages = parsed_doc.pages[:5] if hasattr(parsed_doc, 'pages') else []
+            cover_page_text = "\n\n".join(
+                f"[Page {p.page_num}]\n{p.text}" for p in cover_pages if p.text.strip()
+            )
+            applicable_sections = [s for s in applicable_sections if s != "cover_page"]
+
+        # === Strategy 1: Section-filtered RAG ===
+        doc_results = []
+        if applicable_sections:
+            for section in applicable_sections:
+                section_results = self.embeddings.query(
+                    document_collection,
+                    query_text=doc_query,
+                    top_k=3,
+                    where={"section": section},
+                )
+                doc_results.extend(section_results)
+
+        # === Strategy 2: Unfiltered RAG (if strategy 1 was weak) ===
+        avg_distance = self._avg_distance(doc_results)
+        if not doc_results or avg_distance > 0.55:
+            # Broaden the query using title + description
+            broad_query = f"{rule.get('title', '')} {rule.get('description', '')}"
+            broad_results = self.embeddings.query(
+                document_collection,
+                query_text=broad_query,
+                top_k=8,
+            )
+            if not doc_results or self._avg_distance(broad_results) < avg_distance:
+                doc_results = broad_results
+
+        # === Strategy 3: Direct section text scan (if RAG still weak) ===
+        avg_distance = self._avg_distance(doc_results)
+        if avg_distance > 0.6 and applicable_sections and hasattr(parsed_doc, 'sections'):
+            section_text_parts = []
+            for section in parsed_doc.sections:
+                if section.name in applicable_sections and section.text:
+                    # Take first 3000 chars of each matching section
+                    section_text_parts.append(
+                        f"[Section: {section.name}, Pages {section.start_page}-{section.end_page}]\n"
+                        f"{section.text[:3000]}"
+                    )
+            if section_text_parts:
+                direct_text = "\n\n".join(section_text_parts)
+                # Combine with whatever RAG found
+                rag_text = "\n\n".join([r["text"][:1500] for r in doc_results[:3]])
+                document_text = f"=== DIRECT SECTION SCAN ===\n{direct_text[:4000]}\n\n=== RAG RESULTS ===\n{rag_text}"
+
+                if cover_page_text:
+                    document_text = f"=== COVER PAGE ===\n{cover_page_text[:3000]}\n\n{document_text}"
+
+                return document_text, max(0.5, 1.0 - avg_distance)
+
+        # Build final document text from RAG results
+        document_text = "\n\n".join([r["text"][:1500] for r in doc_results[:6]])
+
+        if cover_page_text:
+            document_text = (
+                f"=== COVER PAGE (First 5 Pages) ===\n{cover_page_text[:4000]}\n\n"
+                f"=== RELEVANT SECTIONS ===\n{document_text}"
+            )
+
+        avg_retrieval_score = 1.0 - self._avg_distance(doc_results)
+        return document_text, max(0.0, avg_retrieval_score)
+
+    def _avg_distance(self, results: list) -> float:
+        """Compute average distance from RAG results."""
+        if not results:
+            return 1.0
+        return sum(r.get("distance", 0.5) for r in results) / len(results)
 
     def _make_finding(self, rule, status, confidence, llm_confidence,
                       evidence_found, evidence_missing, explanation,
