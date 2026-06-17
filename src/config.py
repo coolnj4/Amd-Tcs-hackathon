@@ -67,7 +67,7 @@ OVERLAP_CHARS = 800          # Overlap in characters
 # ============================================================
 COMPLIANCE_COLLECTION_NAME = "sebi_compliance"
 DOCUMENT_COLLECTION_PREFIX = "drhp_"
-RAG_TOP_K = 5                # Number of chunks to retrieve
+RAG_TOP_K = 8                # Number of chunks to retrieve
 
 # ============================================================
 # VALIDATION PARAMETERS

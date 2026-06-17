@@ -147,6 +147,13 @@ class CrossReferenceValidator:
 
                 # Check if values are different (beyond tolerance)
                 if tf["value"] > 0 and tbf["value"] > 0:
+                    # ORDER OF MAGNITUDE GUARD: skip if values differ by >100x
+                    # This prevents false alarms like face value (₹10) vs
+                    # issue size (₹1,500 million) which are different metrics
+                    magnitude_ratio = max(tf["value"], tbf["value"]) / min(tf["value"], tbf["value"])
+                    if magnitude_ratio > 100:
+                        continue
+
                     ratio = abs(tf["value"] - tbf["value"]) / max(tf["value"], tbf["value"])
                     if ratio > tolerance:
                         import hashlib

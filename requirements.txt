@@ -16,8 +16,9 @@ paddleocr
 Pillow
 numpy
 
-# UI (for later)
+# UI & Visualization
 streamlit
+plotly
 
 # Report Generation
 fpdf2
@@ -26,3 +27,4 @@ fpdf2
 pandas
 scikit-learn
 tqdm
+psutil
